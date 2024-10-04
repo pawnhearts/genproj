@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from genproj import ServiceTemplate, chdir
 
@@ -13,7 +12,6 @@ app.egg-info
 htmlcov
 .venv
 """
-
 df = """FROM python:3.12
 
 ENV PYTHONUNBUFFERED=1
@@ -54,33 +52,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 CMD ["fastapi", "run", "--workers", "4", "{name}/main.py"]
 """
-
-
-df2 = """FROM node:lts-alpine
-
-# install simple http server for serving static content
-RUN yarn global add @vue/cli
-
-# make the 'app' folder the current working directory
-WORKDIR /app
-
-# copy both 'package.json' and 'package-lock.json' (if available)
-COPY package*.json ./
-
-# install project dependencies
-RUN npm install
-
-COPY ./{name} /app/
-
-# build app for production with minification
-RUN npm run build
-
-EXPOSE 8080
-CMD [ "http-server", "dist" ]
-"""
-
-rq = """fastapi[standard]
-"""
 mainpy = """from fastapi import FastAPI
 
 app = FastAPI()
@@ -91,31 +62,31 @@ async def root():
     return {{"message": "Hello World"}}
 """
 
+rq = """fastapi[standard]
+"""
+pyproj = """[tool.poetry]
+name = "{name}"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
 
-class PostgresTemplate(ServiceTemplate):
-    image = "postgres:15.1"
-    port: int = 5432
-    volumes = ["postgres_data:/var/lib/postgresql/data/"]
+[tool.poetry.dependencies]
+python = "^{python_version}"
 
-    def env(self):
-        return {
-            "POSTGRES_USER": "postgres",
-            "POSTGRES_PASSWORD": "postgres",
-            "POSTGRES_DB": self.name,
-            "POSTGRES_PORT": self.port,
-        }
-
-    # def environment(self):
-    #     return self.env()
-
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+"""
 
 class FastApiTemplate(ServiceTemplate):
     files = {
         ".dockerignore": di,
         ".gitignore": di,
         "Dockerfile": df,
-        "requirements.txt": rq,
+        # "requirements.txt": rq,
         "main.py": mainpy,
+        "pyproject.toml": pyproj,
     }
     command = "uvicorn main:app --reload --host 0.0.0.0 --port {port} --proxy-headers"
 
@@ -128,34 +99,12 @@ class FastApiTemplate(ServiceTemplate):
             os.system(
                 "\n".join(
                     [
-                        "python3 -m venv .venv",
-                        ".venv/bin/python -m pip install --upgrade pip",
-                        ".venv/bin/python -m pip install -r requirements.txt",
-                    ]
-                )
-            )
-
-
-class VueTemplate(ServiceTemplate):
-    command = "yarn serve -- --port {port}"
-
-    files = {
-        ".dockerignore": di,
-        ".gitignore": di,
-        "Dockerfile": df2,
-    }
-
-    def write_files(self):
-        super().write_files()
-        path = Path(self.name)
-        path.mkdir(exist_ok=True)
-
-        with chdir(self.name):
-            os.system(
-                "\n".join(
-                    [
-                        "yarn global add @vue/cli",
-                        f"vue create {self.name}",
+                        # "poetry init",
+                        "poetry add 'fastapi[standard]'",
+                        "poetry export -f requirements.txt --output requirements.txt",
+                        # "python3 -m venv .venv",
+                        # ".venv/bin/python -m pip install --upgrade pip",
+                        # ".venv/bin/python -m pip install -r requirements.txt",
                     ]
                 )
             )

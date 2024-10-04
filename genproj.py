@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -7,9 +8,11 @@ from benedict import benedict
 
 
 @contextmanager
-def chdir(path: Path | str):
+def chdir(path: Path | str, mkdir: bool = False):
     origin = Path().absolute()
     try:
+        if mkdir:
+            Path(path).mkdir(parents=True, exist_ok=True)
         os.chdir(path)
         yield
     finally:
@@ -25,6 +28,7 @@ class ServiceTemplate:
     volumes = []
     ports = None
     services = []  # other services
+    environments = []
 
     default_compose = {
         "env_file": [".env"],
@@ -68,7 +72,12 @@ class ServiceTemplate:
                     name = Path(name)
                     name.parent.mkdir(parents=True, exist_ok=True)
                     with open(name, "w") as f:
-                        f.write(template.format(**asdict(self)))
+                        f.write(
+                            template.format(
+                                python_version=f"{sys.version_info.major}.{sys.version_info.minor}",
+                                **asdict(self),
+                            )
+                        )
 
     def dependencies(self):
         return {}
@@ -87,24 +96,33 @@ class ServiceTemplate:
             dependency.inject(compose, env)
 
 
-def generate():
-    from templates import FastApiTemplate, VueTemplate
+def generate(output_dir="build", environments=None):
+    from templates.vue import VueTemplate
+    from templates.fastapi import FastApiTemplate
 
-    services = [FastApiTemplate(name="backend", port=8080), VueTemplate(name='front', port=8081)]
+    with chdir(output_dir, mkdir=True):
 
-    compose = benedict({"services": {}})
-    env = {}
+        from templates.django import DjangoTemplate
+        services = [
+            DjangoTemplate(name="backend2", port=8081),
+            FastApiTemplate(name="backend", port=8080),
+            VueTemplate(name="front", port=8081),
+        ]
 
-    for service in services:
-        service.services = services
-        service.inject(compose, env)
+        compose = benedict({"services": {}})
+        env = {}
 
-    with open("compose.yml", "w") as f:
-        f.write(compose.to_yaml())
+        for service in services:
+            service.services = services
+            service.environments = environments
+            service.inject(compose, env)
 
-    with open(".env.example", "w") as f:
-        for k, v in env.items():
-            f.write(f"{k}={v}\n")
+        with open("compose.yml", "w") as f:
+            f.write(compose.to_yaml())
+
+        with open(".env.example", "w") as f:
+            for k, v in env.items():
+                f.write(f"{k}={v}\n")
 
 
 if __name__ == "__main__":
