@@ -51,6 +51,10 @@ CMD [ "http-server", "dist" ]
 
 
 class VueTemplate(ServiceTemplate):
+    """
+    vue service template.
+    Requires vue-cli
+    """
     command = "yarn serve -- --port {port}"
 
     files = {

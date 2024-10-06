@@ -1,8 +1,10 @@
 import os
+import shlex
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, asdict
 from pathlib import Path
+from platform import python_version
 
 from benedict import benedict
 
@@ -74,7 +76,6 @@ class ServiceTemplate:
                     with open(name, "w") as f:
                         f.write(
                             template.format(
-                                python_version=f"{sys.version_info.major}.{sys.version_info.minor}",
                                 **asdict(self),
                             )
                         )
@@ -88,12 +89,50 @@ class ServiceTemplate:
     def environment(self):
         return {}
 
-    def inject(self, compose, env):
+    def inject(self, compose, env, services, environments=None):
+        self.services = services
+        self.environments = environments
         compose["services"].update(self.compose())
         env.update(self.env())
         self.write_files()
         for dependency in self.dependencies():
             dependency.inject(compose, env)
+
+
+pyproject_toml = """[tool.poetry]
+name = "{name}"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^{python_version}"
+
+[tool.poetry-auto-export]
+output = "requirements.txt"
+without_hashes = true
+without = ["dev"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+"""
+
+
+class PoetryMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.files["pyproject.toml"] = pyproject_toml.format(
+            python_version=f"{sys.version_info.major}.{sys.version_info.minor}"
+        )
+
+    def poetry_add(self, *dependencies):
+        for dependency in dependencies:
+            os.system(f"poetry add {shlex.quote(dependency)}")
+
+    def poetry_export(self):
+        os.system("poetry export -f requirements.txt --output requirements.txt")
 
 
 def generate(output_dir="build", environments=None):
@@ -103,6 +142,7 @@ def generate(output_dir="build", environments=None):
     with chdir(output_dir, mkdir=True):
 
         from templates.django import DjangoTemplate
+
         services = [
             DjangoTemplate(name="backend2", port=8081),
             FastApiTemplate(name="backend", port=8080),
@@ -113,9 +153,7 @@ def generate(output_dir="build", environments=None):
         env = {}
 
         for service in services:
-            service.services = services
-            service.environments = environments
-            service.inject(compose, env)
+            service.inject(compose, env, services, environments)
 
         with open("compose.yml", "w") as f:
             f.write(compose.to_yaml())

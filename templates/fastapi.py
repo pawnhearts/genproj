@@ -1,6 +1,6 @@
 import os
 
-from genproj import ServiceTemplate, chdir
+from genproj import ServiceTemplate, chdir, PoetryMixin
 from templates.nginx import NginxTemplate
 
 di = """
@@ -65,20 +65,6 @@ async def root():
 
 rq = """fastapi[standard]
 """
-pyproj = """[tool.poetry]
-name = "{name}"
-version = "0.1.0"
-description = ""
-authors = []
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^{python_version}"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-"""
 nginx = """
 location /api {
     proxy_pass http://{name}:{port};
@@ -87,14 +73,19 @@ location /api {
 }
 """
 
-class FastApiTemplate(ServiceTemplate):
+
+class FastApiTemplate(PoetryMixin, ServiceTemplate):
+    """
+    FastAPI service template.
+    Requires poetry to be installed on host and https://github.com/Ddedalus/poetry-auto-export
+    """
+
     files = {
         ".dockerignore": di,
         ".gitignore": di,
         "Dockerfile": df,
         # "requirements.txt": rq,
         "main.py": mainpy,
-        "pyproject.toml": pyproj,
         "nginx.conf": nginx,
     }
     command = "uvicorn main:app --reload --host 0.0.0.0 --port {port} --proxy-headers"
@@ -105,18 +96,22 @@ class FastApiTemplate(ServiceTemplate):
     def write_files(self):
         super().write_files()
         with chdir(self.name):
-            os.system(
-                "\n".join(
-                    [
-                        # "poetry init",
-                        "poetry add 'fastapi[standard]'",
-                        "poetry export -f requirements.txt --output requirements.txt",
-                        # "python3 -m venv .venv",
-                        # ".venv/bin/python -m pip install --upgrade pip",
-                        # ".venv/bin/python -m pip install -r requirements.txt",
-                    ]
-                )
-            )
+            self.poetry_add('fastapi[standard]')
+            self.poetry_export()
+            # os.system(
+            #     "\n".join(
+            #         [
+            #             # "poetry init",
+            #             "poetry add 'fastapi[standard]'",
+            #             "poetry export -f requirements.txt --output requirements.txt",
+            #             # "python3 -m venv .venv",
+            #             # ".venv/bin/python -m pip install --upgrade pip",
+            #             # ".venv/bin/python -m pip install -r requirements.txt",
+            #         ]
+            #     )
+            # )
         for service in self.services:
             if isinstance(service, NginxTemplate):
-                service.volumes.append(f"./{self.name}/nginx.conf:/etc/nginx/endpoints/{self.name}.conf:ro")
+                service.volumes.append(
+                    f"./{self.name}/nginx.conf:/etc/nginx/endpoints/{self.name}.conf:ro"
+                )

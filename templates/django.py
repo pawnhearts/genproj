@@ -1,6 +1,6 @@
 import os
 
-from genproj import ServiceTemplate, chdir
+from genproj import ServiceTemplate, chdir, PoetryMixin
 
 di = """
 # Python
@@ -53,27 +53,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 CMD ["fastapi", "run", "--workers", "4", "{name}/main.py"]
 """
 
-pyproj = """[tool.poetry]
-name = "{name}"
-version = "0.1.0"
-description = ""
-authors = []
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^{python_version}"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-"""
-
-class DjangoTemplate(ServiceTemplate):
+class DjangoTemplate(PoetryMixin, ServiceTemplate):
+    """
+    django service template.
+    Requires poetry to be installed on host and https://github.com/Ddedalus/poetry-auto-export
+    """
     files = {
         ".dockerignore": di,
         ".gitignore": di,
         "Dockerfile": df,
-        "pyproject.toml": pyproj,
     }
     command = "uvicorn main:app --reload --host 0.0.0.0 --port {port} --proxy-headers"
 
@@ -83,15 +71,17 @@ class DjangoTemplate(ServiceTemplate):
     def write_files(self):
         super().write_files()
         with chdir(self.name):
-            os.system(
-                "\n".join(
-                    [
-                        # "poetry init",
-                        "poetry add django",
-                        f"poetry run django-admin startproject {self.name} .",
-                        # "python3 -m venv .venv",
-                        # ".venv/bin/python -m pip install --upgrade pip",
-                        # ".venv/bin/python -m pip install -r requirements.txt",
-                    ]
-                )
-            )
+            self.poetry_add('django')
+            self.poetry_export()
+            # os.system(
+            #     "\n".join(
+            #         [
+            #             # "poetry init",
+            #             "poetry add django",
+            #             f"poetry run django-admin startproject {self.name} .",
+            #             # "python3 -m venv .venv",
+            #             # ".venv/bin/python -m pip install --upgrade pip",
+            #             # ".venv/bin/python -m pip install -r requirements.txt",
+            #         ]
+            #     )
+            # )
