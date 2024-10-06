@@ -1,6 +1,7 @@
 import os
 
 from genproj import ServiceTemplate, chdir
+from templates.nginx import NginxTemplate
 
 di = """
 # Python
@@ -78,6 +79,13 @@ python = "^{python_version}"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 """
+nginx = """
+location /api {
+    proxy_pass http://{name}:{port};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+"""
 
 class FastApiTemplate(ServiceTemplate):
     files = {
@@ -87,6 +95,7 @@ class FastApiTemplate(ServiceTemplate):
         # "requirements.txt": rq,
         "main.py": mainpy,
         "pyproject.toml": pyproj,
+        "nginx.conf": nginx,
     }
     command = "uvicorn main:app --reload --host 0.0.0.0 --port {port} --proxy-headers"
 
@@ -108,3 +117,6 @@ class FastApiTemplate(ServiceTemplate):
                     ]
                 )
             )
+        for service in self.services:
+            if isinstance(service, NginxTemplate):
+                service.volumes.append(f"./{self.name}/nginx.conf:/etc/nginx/endpoints/{self.name}.conf:ro")

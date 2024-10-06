@@ -69,7 +69,7 @@ class ServiceTemplate:
             path.mkdir(exist_ok=True)
             with chdir(path):
                 for name, template in self.files.items():
-                    name = Path(name)
+                    name = Path(name.format(**asdict(self)))
                     name.parent.mkdir(parents=True, exist_ok=True)
                     with open(name, "w") as f:
                         f.write(
